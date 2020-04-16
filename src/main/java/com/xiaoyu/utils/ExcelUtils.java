@@ -1,14 +1,16 @@
 package com.xiaoyu.utils;
 
 import com.xiaoyu.anno.ExcelField;
-import org.apache.log4j.Logger;
+import com.xiaoyu.exception.InvalidParametersException;
 import org.apache.poi.hssf.usermodel.*;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -23,9 +25,7 @@ import java.util.*;
  */
 public class ExcelUtils {
 
-    private static final String LOG_STR = "【Excel表格工具类】";
 
-    private static final Logger log = Logger.getLogger(ExcelUtils.class);
     /**
      * 导出Excel
      *
@@ -33,11 +33,18 @@ public class ExcelUtils {
      * @param title     注意! Map的Key是：实体的字段名称  value是：标题，用于创建表格第一行（如：编号，创建时间）
      * @param list      表格数据，请使用泛型！
      * @return HSSFWorkbook
+     * @throws InvocationTargetException  调用目标异常
+     * @throws IllegalAccessException     非法访问异常
+     * @throws NoSuchMethodException      没有这样的方法异常
+     * @throws ParseException             转换异常
+     * @throws InvalidParametersException 参数错误异常
      */
-    public static HSSFWorkbook exportExcel(String sheetName, Map<String, String> title, List<?> list) {
+    public static HSSFWorkbook exportExcel(String sheetName, Map<String, String> title, List<?> list)
+            throws InvocationTargetException, IllegalAccessException, NoSuchMethodException, ParseException, InvalidParametersException {
         //校验参数
-        if (!verification(sheetName, title, list)) {
-            return null;
+        String verificationStr = verification(sheetName, title, list);
+        if (verificationStr != null) {
+            throw new InvalidParametersException(verificationStr);
         }
         HSSFWorkbook wb = new HSSFWorkbook();
         HSSFSheet sheet = wb.createSheet(sheetName);
@@ -46,88 +53,76 @@ public class ExcelUtils {
         style.setAlignment(HorizontalAlignment.CENTER);
         HSSFCell cell;
 //        log.info(LOG_STR + "正在导出Excel表格，sheetName：{}，标题长度：{}，表格数据条数：{}", sheetName, title.size(), list.size());
-        try {
-            int c = 0;
+        int c = 0;
+        for (String string : title.keySet()) {
+            cell = row.createCell(c);
+            cell.setCellValue(title.get(string));
+            cell.setCellStyle(style);
+            c++;
+        }
+        //获取集合中的第一个属性Class对象，其他属性Class属性都一致
+        Class beanClass = list.get(0).getClass();
+        //实体对象
+        Object object;
+        Method method;
+        //值
+        String field;
+        Map<String, Map<String, String>> maps = stringMapMap((list.get(0)));
+
+        for (int i = 0; i < list.size(); i++) {
+            row = sheet.createRow(i + 1);
+            //获取对象
+            object = list.get(i);
+            c = 0;
             for (String string : title.keySet()) {
-                cell = row.createCell(c);
-                cell.setCellValue(title.get(string));
-                cell.setCellStyle(style);
+                method = beanClass.getDeclaredMethod("get" + DataUtils.captureName(string));
+                field = String.valueOf(method.invoke(object));
+                if (maps.get(string) != null) {
+                    //该字段有注解
+                    String fieldInMap = maps.get(string).get(field);
+                    field = DataUtils.isEmpty(fieldInMap) ? field : fieldInMap;
+                    row.createCell(c).setCellValue(field);
+                } else {
+                    //判断返回值
+                    if (method.getReturnType() == double.class) {
+                        row.createCell(c).setCellValue(DataUtils.isEmpty(field) ? "0.0" : field);
+                    } else if (method.getReturnType() == int.class || method.getReturnType() == Integer.class) {
+                        row.createCell(c).setCellValue(DataUtils.isEmpty(field) ? "0" : field);
+                    } else if (method.getReturnType() == Date.class) {
+                        SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                        Date date = formatter.parse(field);
+                        String dateString = formatter.format(date);
+                        row.createCell(c).setCellValue(DataUtils.isEmpty(dateString) ? "" : field);
+                    } else if ("null".equals(field)) {
+                        row.createCell(c).setCellValue("");
+                    } else {
+                        row.createCell(c).setCellValue(DataUtils.isEmpty(field) ? "" : field);
+                    }
+                }
                 c++;
             }
-            //获取集合中的第一个属性Class对象，其他属性Class属性都一致
-            Class beanClass = list.get(0).getClass();
-            //实体对象
-            Object object;
-            Method method;
-            //值
-            String field;
-            Map<String, Map<String, String>> maps = stringMapMap((list.get(0)));
-
-            for (int i = 0; i < list.size(); i++) {
-                row = sheet.createRow(i + 1);
-                //获取对象
-                object = list.get(i);
-                c = 0;
-                for (String string : title.keySet()) {
-                    try {
-                        method = beanClass.getDeclaredMethod("get" + DataUtils.captureName(string));
-                        field = String.valueOf(method.invoke(object));
-                        if (maps != null && maps.get(string) != null) {
-                            //该字段有注解
-                            String fieldInMap = maps.get(string).get(field);
-                            field = DataUtils.isEmpty(fieldInMap) ? field : fieldInMap;
-                            row.createCell(c).setCellValue(field);
-                        } else {
-                            //判断返回值
-                            if (method.getReturnType() == double.class) {
-                                row.createCell(c).setCellValue(DataUtils.isEmpty(field) ? "0.0" : field);
-                            } else if (method.getReturnType() == int.class || method.getReturnType() == Integer.class) {
-                                row.createCell(c).setCellValue(DataUtils.isEmpty(field) ? "0" : field);
-                            } else if (method.getReturnType() == Date.class) {
-                                SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                                Date date = formatter.parse(field);
-                                String dateString = formatter.format(date);
-                                row.createCell(c).setCellValue(DataUtils.isEmpty(dateString) ? "" : field);
-                            } else if ("null".equals(field)) {
-                                row.createCell(c).setCellValue("");
-                            } else {
-                                row.createCell(c).setCellValue(DataUtils.isEmpty(field) ? "" : field);
-                            }
-                        }
-
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        log.info(LOG_STR + "异常:" + e.getMessage());
-                    }
-                    c++;
-                }
-            }
-            // 设定自动宽度
-            for (int i = 0; i < title.size(); i++) {
-                sheet.autoSizeColumn(i);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            log.error(LOG_STR + "异常:" + e.getMessage());
+        }
+        // 设定自动宽度
+        for (int i = 0; i < title.size(); i++) {
+            sheet.autoSizeColumn(i);
         }
         return wb;
     }
+
 
     /**
      * 通过List导出Excel表格
      *
      * @param sheetName 文件名
-     * @param lists 数据表格
+     * @param lists     数据表格
      * @return HSSFWorkbook
+     * @throws InvalidParametersException 参数错误异常
      */
-    public static HSSFWorkbook exportExcel(String sheetName, List<List<String>> lists) {
-        if (sheetName == null) {
-            log.error(LOG_STR + "文件名不能为空 ！");
-            return null;
-        }
-        if (DataUtils.isEmpty(lists)) {
-            log.error(LOG_STR + "导出数据不能未空！");
-            return null;
+    public static HSSFWorkbook exportExcel(String sheetName, List<List<String>> lists) throws InvalidParametersException {
+        //校验参数
+        String verificationStr = verification(sheetName, lists);
+        if (verificationStr != null) {
+            throw new InvalidParametersException(verificationStr);
         }
         HSSFWorkbook wb = new HSSFWorkbook();
         HSSFSheet sheet = wb.createSheet(sheetName);
@@ -135,28 +130,22 @@ public class ExcelUtils {
         HSSFCellStyle style = wb.createCellStyle();
         style.setAlignment(HorizontalAlignment.CENTER);
         HSSFCell cell;
-//        log.info(LOG_STR + "正在导出Excel表格，sheetName：{}，标题长度：{}，表格数据条数：{}", sheetName, lists.get(0).size(), lists.size());
-        try {
-            for (int j = 0;j < lists.get(0).size(); j++){
-                cell = row.createCell(j);
-                cell.setCellValue(lists.get(0).get(j));
-                cell.setCellStyle(style);
+        for (int j = 0; j < lists.get(0).size(); j++) {
+            cell = row.createCell(j);
+            cell.setCellValue(lists.get(0).get(j));
+            cell.setCellStyle(style);
+        }
+        for (int i = 1; i < lists.size(); i++) {
+            row = sheet.createRow(i);
+            //获取对象
+            List<String> list = lists.get(i);
+            for (int d = 0; d < list.size(); d++) {
+                row.createCell(d).setCellValue(list.get(d));
             }
-            for (int i = 1; i < lists.size(); i++) {
-                row = sheet.createRow(i);
-                //获取对象
-                List<String> list = lists.get(i);
-                for (int d = 0;d < list.size(); d++){
-                    row.createCell(d).setCellValue(list.get(d));
-                }
-            }
-            // 设定自动宽度
-            for (int i = 0; i < lists.get(0).size(); i++) {
-                sheet.autoSizeColumn(i);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            log.error(LOG_STR + "异常:" + e.getMessage());
+        }
+        // 设定自动宽度
+        for (int i = 0; i < lists.get(0).size(); i++) {
+            sheet.autoSizeColumn(i);
         }
         return wb;
     }
@@ -166,8 +155,9 @@ public class ExcelUtils {
      *
      * @param object 类对象
      * @return map
+     * @throws InvalidParametersException Exception
      */
-    private static Map<String, Map<String, String>> stringMapMap(Object object) {
+    private static Map<String, Map<String, String>> stringMapMap(Object object) throws InvalidParametersException {
         Class clazz = object.getClass();
         Field[] fields = clazz.getDeclaredFields();
         Map<String, Map<String, String>> maps = new HashMap<>(fields.length);
@@ -180,8 +170,7 @@ public class ExcelUtils {
                     String[] param = annotation.value();
                     Map<String, String> map = new HashMap<>(param.length / 2);
                     if (param.length % 2 != 0) {
-                        log.error(LOG_STR + "注解参数格式错误！请检查！");
-                        return null;
+                        throw new InvalidParametersException("注解参数格式错误！请检查！");
                     }
                     for (int i = 0; i < param.length; i += 2) {
                         map.put(param[i], param[i + 1]);
@@ -191,30 +180,6 @@ public class ExcelUtils {
             }
         }
         return maps;
-    }
-
-    /**
-     * 验证格式是否正确
-     *
-     * @param sheetName sheetName
-     * @param title     title
-     * @param list      list
-     * @return boolean
-     */
-    private static boolean verification(String sheetName, Map<String, String> title, List<?> list) {
-        if (DataUtils.isEmpty(sheetName)) {
-            log.error(LOG_STR + "导出失败！原因：" + sheetName + "不能为空！");
-            return false;
-        }
-        if (title.isEmpty()) {
-            log.error(LOG_STR + "导出失败！原因：Map不能为空！");
-            return false;
-        }
-        if (DataUtils.isEmpty(list)) {
-            log.error(LOG_STR + "导出失败！原因：List 表格数据不能为空！");
-            return false;
-        }
-        return true;
     }
 
 
@@ -229,7 +194,7 @@ public class ExcelUtils {
      * @param startRows 开始读取的行数，因为一般第一行是标题
      * @return List 实体集合
      */
-    public static List<Object> importExcel(Object o, File file, boolean uuid, int startRows) {
+    public static List<Object> importExcel(Object o, File file, boolean uuid, int startRows) throws Exception {
         return readExcel(o, file, uuid, startRows);
     }
 
@@ -243,7 +208,7 @@ public class ExcelUtils {
      * @param uuid 实体类是否有UUID，是否实现的序列化
      * @return List 实体集合
      */
-    public static List<Object> importExcel(Object o, File file, boolean uuid) {
+    public static List<Object> importExcel(Object o, File file, boolean uuid) throws Exception {
         return readExcel(o, file, uuid, 2);
     }
 
@@ -254,7 +219,7 @@ public class ExcelUtils {
      * @param startRows 开始读取的行数，因为一般第一行是标题
      * @return List<List < String>>  List集合
      */
-    public static List<List<String>> importExcel(File file, int startRows) {
+    public static List<List<String>> importExcel(File file, int startRows) throws IOException, InvalidParametersException {
         return readExcel(file, startRows);
     }
 
@@ -264,124 +229,102 @@ public class ExcelUtils {
      * @param file 导入的文件
      * @return List<List < String>>  List集合
      */
-    public static List<List<String>> importExcel(File file) {
+    public static List<List<String>> importExcel(File file) throws IOException, InvalidParametersException {
         return readExcel(file, 2);
     }
 
-    private static List<Object> readExcel(Object o, File file, boolean uuid, int startRows) {
-        //验证参数
-        if (!verification(o, file, startRows)) {
-            return null;
+    private static List<Object> readExcel(Object o, File file, boolean uuid, int startRows) throws Exception {
+        //校验参数
+        String verificationStr = verification(o, file, startRows);
+        if (verificationStr != null) {
+            throw new InvalidParametersException(verificationStr);
         }
         HSSFWorkbook wb;
-        try {
-            wb = new HSSFWorkbook(new FileInputStream(file));
-        } catch (IOException e) {
-            e.printStackTrace();
-            log.error(LOG_STR + e.getMessage());
-            return null;
-        }
+        wb = new HSSFWorkbook(new FileInputStream(file));
         HSSFSheet sheet = wb.getSheetAt(0);
         List<Object> list = new ArrayList<>(sheet.getLastRowNum());
         Method method;
         Class cc = o.getClass();
-//        log.info(LOG_STR + "正在导入Excel表格，表格名称：{}，标题长度：{}，表格数据条数(包括标题列)：{}"
-//                , file.getName(), sheet.getRow(0).getLastCellNum(), sheet.getLastRowNum());
+
         Map<String, Map<String, String>> maps = stringMapMap(o);
         Field[] fields;
-        try {
-            if (uuid) {
-                fields = arraySubtract(cc.getDeclaredFields());
-            } else {
-                fields = cc.getDeclaredFields();
+        if (uuid) {
+            fields = arraySubtract(cc.getDeclaredFields());
+        } else {
+            fields = cc.getDeclaredFields();
+        }
+        for (int j = (startRows - 1); j < sheet.getLastRowNum() + 1; j++) {
+            HSSFRow row = sheet.getRow(j);
+            if (row.getLastCellNum() != fields.length) {
+                throw new Exception("fields 的长度与Excel 表格行长度不匹配，在Excel：" + j + "行");
             }
-            for (int j = (startRows - 1); j < sheet.getLastRowNum() + 1; j++) {
-                HSSFRow row = sheet.getRow(j);
-                if (row.getLastCellNum() != fields.length) {
-                    log.error(LOG_STR + "fields 的长度与Excel 表格行长度不匹配，在Excel："+j+"行");
+            for (int i = 0; i < row.getLastCellNum(); i++) {
+                //字段名称
+                String fieldName = fields[i].getName();
+                if ("serialVersionUID".equals(fieldName)) {
                     break;
                 }
-                for (int i = 0; i < row.getLastCellNum(); i++) {
-                    //字段名称
-                    String fieldName = fields[i].getName();
-                    if ("serialVersionUID".equals(fieldName)) {
-                        break;
-                    }
-                    HSSFCell cell = row.getCell(i);
-                    //属性类型
-                    Class fieldType = fields[i].getType();
-                    //格数据
-                    String cellValue = String.valueOf(cell.getRichStringCellValue());
+                HSSFCell cell = row.getCell(i);
+                //属性类型
+                Class fieldType = fields[i].getType();
+                //格数据
+                String cellValue = String.valueOf(cell.getRichStringCellValue());
 
-                    if (maps != null && maps.get(fieldName) != null) {
-                        //字段有注解 ，判断是否符合注解中的条件
-                        String fieldInMap = maps.get(fieldName).get(cellValue);
-                        cellValue = DataUtils.isEmpty(fieldInMap) ? cellValue : fieldInMap;
-                    }
-
-                    method = cc.getDeclaredMethod("set" + DataUtils.captureName(fieldName), fieldType);
-                    if (fieldType == int.class) {
-                        method.invoke(o, Integer.parseInt(cellValue));
-                    } else if (fieldType == Long.class) {
-                        method.invoke(o, Long.parseLong(cellValue));
-                    } else if (fieldType == double.class) {
-                        method.invoke(o, Double.parseDouble(cellValue));
-                    } else if (fieldType == Float.class) {
-                        method.invoke(o, Float.parseFloat(cellValue));
-                    }
-//                    else if (fieldType == Date.class) {
-//                        method.invoke(o, DateUtil.parseDate(cellValue));
-//                    }
-                    else if (fieldType == byte.class) {
-                        method.invoke(o, Byte.parseByte(cellValue));
-                    } else if (fieldType == short.class) {
-                        method.invoke(o, Short.parseShort(cellValue));
-                    } else {
-                        method.invoke(o, cellValue);
-                    }
-                    //如有缺少的类型请自行补上
+                if (maps.get(fieldName) != null) {
+                    //字段有注解 ，判断是否符合注解中的条件
+                    String fieldInMap = maps.get(fieldName).get(cellValue);
+                    cellValue = DataUtils.isEmpty(fieldInMap) ? cellValue : fieldInMap;
                 }
-                list.add(o);
+
+                method = cc.getDeclaredMethod("set" + DataUtils.captureName(fieldName), fieldType);
+                if (fieldType == int.class) {
+                    method.invoke(o, Integer.parseInt(cellValue));
+                } else if (fieldType == Long.class) {
+                    method.invoke(o, Long.parseLong(cellValue));
+                } else if (fieldType == double.class) {
+                    method.invoke(o, Double.parseDouble(cellValue));
+                } else if (fieldType == Float.class) {
+                    method.invoke(o, Float.parseFloat(cellValue));
+                } else if (fieldType == Date.class) {
+                    try {
+                        method.invoke(o, new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(cellValue));
+                    } catch (Exception e) {
+                        method.invoke(o, new SimpleDateFormat("yyyy-MM-dd").parse(cellValue));
+                    }
+                } else if (fieldType == byte.class) {
+                    method.invoke(o, Byte.parseByte(cellValue));
+                } else if (fieldType == short.class) {
+                    method.invoke(o, Short.parseShort(cellValue));
+                } else {
+                    method.invoke(o, cellValue);
+                }
+                //如有缺少的类型请自行补上
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-            log.error(LOG_STR + e.getMessage());
+            list.add(o);
         }
         return list;
     }
 
-    private static List<List<String>> readExcel(File file, int startRows) {
-        //验证参数
-        if (!verification(file, startRows)) {
-            return null;
+    private static List<List<String>> readExcel(File file, int startRows) throws IOException, InvalidParametersException {
+        //校验参数
+        String verificationStr = verification(file, startRows);
+        if (verificationStr != null) {
+            throw new InvalidParametersException(verificationStr);
         }
         HSSFWorkbook wb;
-        try {
-            wb = new HSSFWorkbook(new FileInputStream(file));
-        } catch (IOException e) {
-            e.printStackTrace();
-            log.error(LOG_STR + e.getMessage());
-            return null;
-        }
+        wb = new HSSFWorkbook(new FileInputStream(file));
         HSSFSheet sheet = wb.getSheetAt(0);
         List<List<String>> lists = new ArrayList<>(sheet.getLastRowNum());
-//        log.info(LOG_STR + "正在导入Excel表格，表格名称：{}，标题长度：{}，表格数据条数(包括标题列)：{}"
-//                , file.getName(), sheet.getRow(0).getLastCellNum(), sheet.getLastRowNum());
-        try {
-            for (int j = (startRows - 1); j < sheet.getLastRowNum() + 1; j++) {
-                HSSFRow row = sheet.getRow(j);
-                List<String> list = new ArrayList<>(row.getLastCellNum());
-                for (int i = 0; i < row.getLastCellNum(); i++) {
-                    HSSFCell cell = row.getCell(i);
-                    //格数据
-                    String cellValue = String.valueOf(cell.getRichStringCellValue());
-                    list.add(cellValue);
-                }
-                lists.add(list);
+        for (int j = (startRows - 1); j < sheet.getLastRowNum() + 1; j++) {
+            HSSFRow row = sheet.getRow(j);
+            List<String> list = new ArrayList<>(row.getLastCellNum());
+            for (int i = 0; i < row.getLastCellNum(); i++) {
+                HSSFCell cell = row.getCell(i);
+                //格数据
+                String cellValue = String.valueOf(cell.getRichStringCellValue());
+                list.add(cellValue);
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-            log.error(LOG_STR + e.getMessage());
+            lists.add(list);
         }
         return lists;
     }
@@ -404,22 +347,19 @@ public class ExcelUtils {
      * @param o         实体参数
      * @param file      文件
      * @param startRows 起始行数
-     * @return boolean
+     * @return String
      */
-    private static boolean verification(Object o, File file, int startRows) {
+    private static String verification(Object o, File file, int startRows) {
         if (o == null) {
-            log.error(LOG_STR + "实体类参数不能为空 ！");
-            return false;
+            return "实体类参数不能为空 ！";
         }
         if (file == null) {
-            log.error(LOG_STR + "导入文件不能为空 ！");
-            return false;
+            return "导入文件不能为空 ！";
         }
         if (startRows < 1) {
-            log.error(LOG_STR + "读取起始行数不能小于1 ！");
-            return false;
+            return "读取起始行数不能小于1 ！";
         }
-        return true;
+        return null;
     }
 
     /**
@@ -429,17 +369,45 @@ public class ExcelUtils {
      * @param startRows 起始行数
      * @return boolean
      */
-    private static boolean verification(File file, int startRows) {
+    private static String verification(File file, int startRows) {
         if (file == null) {
-            log.error(LOG_STR + "导入文件不能为空 ！");
-            return false;
+            return "导入文件不能为空 ！";
         }
         if (startRows < 1) {
-            log.error(LOG_STR + "读取起始行数不能小于1 ！");
-            return false;
+            return "读取起始行数不能小于1 ！";
         }
-        return true;
+        return null;
     }
 
+    /**
+     * 验证格式是否正确
+     *
+     * @param sheetName sheetName
+     * @param title     title
+     * @param list      list
+     * @return boolean
+     */
+    private static String verification(String sheetName, Map<String, String> title, List<?> list) {
+        if (DataUtils.isEmpty(sheetName)) {
+            return "导出失败！原因：sheetName 不能为空！";
+        }
+        if (title == null || title.isEmpty()) {
+            return "导出失败！原因：Map不能为空！";
+        }
+        if (DataUtils.isEmpty(list)) {
+            return "导出失败！原因：List 表格数据不能为空！";
+        }
+        return null;
+    }
+
+    private static String verification(String sheetName, List<List<String>> lists) {
+        if (DataUtils.isEmpty(sheetName)) {
+            return "导出失败！原因：sheetName 不能为空！";
+        }
+        if (DataUtils.isEmpty(lists)) {
+            return "导出失败！原因：List 表格数据不能为空！";
+        }
+        return null;
+    }
 
 }

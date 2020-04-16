@@ -1,13 +1,12 @@
 package com.xiaoyu;
 
-import com.xiaoyu.entity.Students;
+import com.xiaoyu.exception.InvalidParametersException;
 import com.xiaoyu.utils.ExcelUtils;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.junit.Test;
 
 import java.io.*;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -21,7 +20,7 @@ import java.util.List;
 public class TestExportExcelByList {
 
     @Test
-    public void exportExcel() throws IOException {
+    public void exportExcel() throws IOException, InvalidParametersException {
         List<List<String>> lists = new ArrayList<>();
         List<String> list = new ArrayList<>();
         list.add("姓名");list.add("年龄");list.add("姓别");

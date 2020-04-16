@@ -10,7 +10,7 @@ import com.xiaoyu.anno.ExcelField;
  * @author ZhangXianYu   Email: 1600501744@qq.com
  * @since 2020-04-15 16:45
  */
-public class Students {
+public class Student {
 
     private String name;
 
@@ -52,12 +52,12 @@ public class Students {
                 '}';
     }
 
-    public Students(String name, String sex, int age) {
+    public Student() {
+    }
+
+    public Student(String name, String sex, int age) {
         this.name = name;
         this.sex = sex;
         this.age = age;
-    }
-
-    public Students() {
     }
 }
