@@ -10,11 +10,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
-import java.text.ParseException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * <p>
@@ -28,8 +24,8 @@ public class TestExportExcelByBean {
 
     @Test
     public void exportExcel1() throws IOException, InvalidParametersException, NoSuchMethodException,
-            IllegalAccessException, ParseException, InvocationTargetException {
-        Map<String,String> map = new HashMap<>();
+            IllegalAccessException, InvocationTargetException {
+        LinkedHashMap<String,String> map = new LinkedHashMap<>();
         map.put("name", "姓名");
         map.put("sex", "姓别");
         map.put("age", "年龄");

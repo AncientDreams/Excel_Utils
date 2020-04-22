@@ -1,6 +1,7 @@
 package com.xiaoyu.utils;
 
 import com.xiaoyu.anno.ExcelField;
+import com.xiaoyu.anno.FiledValue;
 import com.xiaoyu.exception.InvalidParametersException;
 import org.apache.poi.hssf.usermodel.*;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
@@ -10,7 +11,6 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -36,11 +36,10 @@ public class ExcelUtils {
      * @throws InvocationTargetException  调用目标异常
      * @throws IllegalAccessException     非法访问异常
      * @throws NoSuchMethodException      没有这样的方法异常
-     * @throws ParseException             转换异常
      * @throws InvalidParametersException 参数错误异常
      */
-    public static HSSFWorkbook exportExcel(String sheetName, Map<String, String> title, List<?> list)
-            throws InvocationTargetException, IllegalAccessException, NoSuchMethodException, ParseException, InvalidParametersException {
+    public static HSSFWorkbook exportExcel(String sheetName, LinkedHashMap<String, String> title, List<?> list)
+            throws InvocationTargetException, IllegalAccessException, NoSuchMethodException, InvalidParametersException {
         //校验参数
         String verificationStr = verification(sheetName, title, list);
         if (verificationStr != null) {
@@ -50,6 +49,10 @@ public class ExcelUtils {
         HSSFSheet sheet = wb.createSheet(sheetName);
         HSSFRow row = sheet.createRow(0);
         HSSFCellStyle style = wb.createCellStyle();
+        HSSFFont font = wb.createFont();
+        font.setBold(true);
+        font.setFontHeightInPoints((short) 14);
+        style.setFont(font);
         style.setAlignment(HorizontalAlignment.CENTER);
         HSSFCell cell;
 //        log.info(LOG_STR + "正在导出Excel表格，sheetName：{}，标题长度：{}，表格数据条数：{}", sheetName, title.size(), list.size());
@@ -68,6 +71,7 @@ public class ExcelUtils {
         //值
         String field;
         Map<String, Map<String, String>> maps = stringMapMap((list.get(0)));
+        Map<String, String[]> mapByFiledValue = analysis(list.get(0));
 
         for (int i = 0; i < list.size(); i++) {
             row = sheet.createRow(i + 1);
@@ -81,18 +85,22 @@ public class ExcelUtils {
                     //该字段有注解
                     String fieldInMap = maps.get(string).get(field);
                     field = DataUtils.isEmpty(fieldInMap) ? field : fieldInMap;
+
+                    if(mapByFiledValue.get(string) != null){
+                        //字段包含@FiledValue注解
+                        field = mapByFiledValue.get(string)[0] + field + mapByFiledValue.get(string)[1];
+                    }
                     row.createCell(c).setCellValue(field);
                 } else {
+                    if(mapByFiledValue.get(string) != null){
+                        //字段包含@FiledValue注解
+                        field = mapByFiledValue.get(string)[0] + field + mapByFiledValue.get(string)[1];
+                    }
                     //判断返回值
                     if (method.getReturnType() == double.class) {
                         row.createCell(c).setCellValue(DataUtils.isEmpty(field) ? "0.0" : field);
                     } else if (method.getReturnType() == int.class || method.getReturnType() == Integer.class) {
                         row.createCell(c).setCellValue(DataUtils.isEmpty(field) ? "0" : field);
-                    } else if (method.getReturnType() == Date.class) {
-                        SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                        Date date = formatter.parse(field);
-                        String dateString = formatter.format(date);
-                        row.createCell(c).setCellValue(DataUtils.isEmpty(dateString) ? "" : field);
                     } else if ("null".equals(field)) {
                         row.createCell(c).setCellValue("");
                     } else {
@@ -128,6 +136,10 @@ public class ExcelUtils {
         HSSFSheet sheet = wb.createSheet(sheetName);
         HSSFRow row = sheet.createRow(0);
         HSSFCellStyle style = wb.createCellStyle();
+        HSSFFont font = wb.createFont();
+        font.setBold(true);
+        font.setFontHeightInPoints((short) 14);
+        style.setFont(font);
         style.setAlignment(HorizontalAlignment.CENTER);
         HSSFCell cell;
         for (int j = 0; j < lists.get(0).size(); j++) {
@@ -180,6 +192,28 @@ public class ExcelUtils {
             }
         }
         return maps;
+    }
+
+    /**
+     * 解析 @FiledValue 注解
+     * @param object  类对象
+     * @return Map<String,String>
+     */
+    private static Map<String,String[]> analysis(Object object) {
+        Field[] fields =  object.getClass().getDeclaredFields();
+        Map<String,String[]> resMap = new HashMap<>(fields.length);
+        if (fields.length > 0) {
+            for (Field field : fields) {
+                if (field.isAnnotationPresent(FiledValue.class)) {
+                    FiledValue annotation = field.getAnnotation(FiledValue.class);
+                    //参数数组
+                    String beginAppend = annotation.beginAppend();
+                    String endAppend = annotation.endAppend();
+                    resMap.put(field.getName(), new String[]{beginAppend,endAppend});
+                }
+            }
+        }
+        return resMap;
     }
 
 
