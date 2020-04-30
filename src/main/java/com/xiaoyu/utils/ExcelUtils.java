@@ -47,6 +47,8 @@ public class ExcelUtils {
         }
         HSSFWorkbook wb = new HSSFWorkbook();
         HSSFSheet sheet = wb.createSheet(sheetName);
+        //固定标题栏
+        sheet.createFreezePane(0, 1, 0, 1);
         HSSFRow row = sheet.createRow(0);
         HSSFCellStyle style = wb.createCellStyle();
         HSSFFont font = wb.createFont();
@@ -64,7 +66,7 @@ public class ExcelUtils {
             c++;
         }
         //获取集合中的第一个属性Class对象，其他属性Class属性都一致
-        Class beanClass = list.get(0).getClass();
+        Class<?> beanClass = list.get(0).getClass();
         //实体对象
         Object object;
         Method method;
@@ -134,6 +136,8 @@ public class ExcelUtils {
         }
         HSSFWorkbook wb = new HSSFWorkbook();
         HSSFSheet sheet = wb.createSheet(sheetName);
+        //固定标题栏
+        sheet.createFreezePane(0, 1, 0, 1);
         HSSFRow row = sheet.createRow(0);
         HSSFCellStyle style = wb.createCellStyle();
         HSSFFont font = wb.createFont();
@@ -170,7 +174,7 @@ public class ExcelUtils {
      * @throws InvalidParametersException Exception
      */
     private static Map<String, Map<String, String>> stringMapMap(Object object) throws InvalidParametersException {
-        Class clazz = object.getClass();
+        Class<?> clazz = object.getClass();
         Field[] fields = clazz.getDeclaredFields();
         Map<String, Map<String, String>> maps = new HashMap<>(fields.length);
 
@@ -278,7 +282,7 @@ public class ExcelUtils {
         HSSFSheet sheet = wb.getSheetAt(0);
         List<Object> list = new ArrayList<>(sheet.getLastRowNum());
         Method method;
-        Class cc = o.getClass();
+        Class<?> cc = o.getClass();
 
         Map<String, Map<String, String>> maps = stringMapMap(o);
         Field[] fields;
@@ -300,7 +304,7 @@ public class ExcelUtils {
                 }
                 HSSFCell cell = row.getCell(i);
                 //属性类型
-                Class fieldType = fields[i].getType();
+                Class<?> fieldType = fields[i].getType();
                 //格数据
                 String cellValue = String.valueOf(cell.getRichStringCellValue());
 
