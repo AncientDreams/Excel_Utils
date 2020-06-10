@@ -72,7 +72,7 @@ public class ExcelUtils {
         Method method;
         //值
         String field;
-        Map<String, Map<String, String>> maps = stringMapMap((list.get(0)));
+        Map<String, Map<String, String>> maps = stringMapMap(beanClass);
         Map<String, String[]> mapByFiledValue = analysis(list.get(0));
 
         for (int i = 0; i < list.size(); i++) {
@@ -169,12 +169,11 @@ public class ExcelUtils {
     /**
      * 解析注解
      *
-     * @param object 类对象
+     * @param clazz 类Class对象
      * @return map
      * @throws InvalidParametersException Exception
      */
-    private static Map<String, Map<String, String>> stringMapMap(Object object) throws InvalidParametersException {
-        Class<?> clazz = object.getClass();
+    private static Map<String, Map<String, String>> stringMapMap(Class<?> clazz) throws InvalidParametersException {
         Field[] fields = clazz.getDeclaredFields();
         Map<String, Map<String, String>> maps = new HashMap<>(fields.length);
 
@@ -284,7 +283,7 @@ public class ExcelUtils {
         Method method;
         Class<?> cc = o.getClass();
 
-        Map<String, Map<String, String>> maps = stringMapMap(o);
+        Map<String, Map<String, String>> maps = stringMapMap(cc);
         Field[] fields;
         if (uuid) {
             fields = arraySubtract(cc.getDeclaredFields());
@@ -292,6 +291,8 @@ public class ExcelUtils {
             fields = cc.getDeclaredFields();
         }
         for (int j = (startRows - 1); j < sheet.getLastRowNum() + 1; j++) {
+            //创建实列
+            Object newInstance = cc.newInstance();
             HSSFRow row = sheet.getRow(j);
             if (row.getLastCellNum() != fields.length) {
                 throw new Exception("fields 的长度与Excel 表格行长度不匹配，在Excel：" + j + "行");
@@ -316,29 +317,29 @@ public class ExcelUtils {
 
                 method = cc.getDeclaredMethod("set" + DataUtils.captureName(fieldName), fieldType);
                 if (fieldType == int.class) {
-                    method.invoke(o, Integer.parseInt(cellValue));
+                    method.invoke(newInstance, Integer.parseInt(cellValue));
                 } else if (fieldType == Long.class) {
-                    method.invoke(o, Long.parseLong(cellValue));
+                    method.invoke(newInstance, Long.parseLong(cellValue));
                 } else if (fieldType == double.class) {
-                    method.invoke(o, Double.parseDouble(cellValue));
+                    method.invoke(newInstance, Double.parseDouble(cellValue));
                 } else if (fieldType == Float.class) {
-                    method.invoke(o, Float.parseFloat(cellValue));
+                    method.invoke(newInstance, Float.parseFloat(cellValue));
                 } else if (fieldType == Date.class) {
                     try {
-                        method.invoke(o, new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(cellValue));
+                        method.invoke(newInstance, new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(cellValue));
                     } catch (Exception e) {
-                        method.invoke(o, new SimpleDateFormat("yyyy-MM-dd").parse(cellValue));
+                        method.invoke(newInstance, new SimpleDateFormat("yyyy-MM-dd").parse(cellValue));
                     }
                 } else if (fieldType == byte.class) {
-                    method.invoke(o, Byte.parseByte(cellValue));
+                    method.invoke(newInstance, Byte.parseByte(cellValue));
                 } else if (fieldType == short.class) {
-                    method.invoke(o, Short.parseShort(cellValue));
+                    method.invoke(newInstance, Short.parseShort(cellValue));
                 } else {
-                    method.invoke(o, cellValue);
+                    method.invoke(newInstance, cellValue);
                 }
                 //如有缺少的类型请自行补上
             }
-            list.add(o);
+            list.add(newInstance);
         }
         return list;
     }
