@@ -5,12 +5,15 @@ import com.xiaoyu.anno.FiledValue;
 import com.xiaoyu.exception.InvalidParametersException;
 import org.apache.poi.hssf.usermodel.*;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.sql.Timestamp;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -37,9 +40,10 @@ public class ExcelUtils {
      * @throws IllegalAccessException     非法访问异常
      * @throws NoSuchMethodException      没有这样的方法异常
      * @throws InvalidParametersException 参数错误异常
+     * @throws ParseException             转换异常
      */
     public static HSSFWorkbook exportExcel(String sheetName, LinkedHashMap<String, String> title, List<?> list)
-            throws InvocationTargetException, IllegalAccessException, NoSuchMethodException, InvalidParametersException {
+            throws InvocationTargetException, IllegalAccessException, NoSuchMethodException, InvalidParametersException, ParseException {
         //校验参数
         String verificationStr = verification(sheetName, title, list);
         if (verificationStr != null) {
@@ -88,13 +92,13 @@ public class ExcelUtils {
                     String fieldInMap = maps.get(string).get(field);
                     field = DataUtils.isEmpty(fieldInMap) ? field : fieldInMap;
 
-                    if(mapByFiledValue.get(string) != null){
+                    if (mapByFiledValue.get(string) != null) {
                         //字段包含@FiledValue注解
                         field = mapByFiledValue.get(string)[0] + field + mapByFiledValue.get(string)[1];
                     }
                     row.createCell(c).setCellValue(field);
                 } else {
-                    if(mapByFiledValue.get(string) != null){
+                    if (mapByFiledValue.get(string) != null) {
                         //字段包含@FiledValue注解
                         field = mapByFiledValue.get(string)[0] + field + mapByFiledValue.get(string)[1];
                     }
@@ -103,6 +107,13 @@ public class ExcelUtils {
                         row.createCell(c).setCellValue(DataUtils.isEmpty(field) ? "0.0" : field);
                     } else if (method.getReturnType() == int.class || method.getReturnType() == Integer.class) {
                         row.createCell(c).setCellValue(DataUtils.isEmpty(field) ? "0" : field);
+                    } else if (method.getReturnType() == Date.class) {
+                        SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                        String dateString = formatter.format(formatter.parse(field));
+                        row.createCell(c).setCellValue(DataUtils.isEmpty(dateString) ? "" : field);
+                    } else if (method.getReturnType() == Timestamp.class) {
+                        SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                        row.createCell(c).setCellValue(df.format(Timestamp.valueOf(field)));
                     } else if ("null".equals(field)) {
                         row.createCell(c).setCellValue("");
                     } else {
@@ -166,6 +177,56 @@ public class ExcelUtils {
         return wb;
     }
 
+
+    /**
+     * 通过List Object[] 导出Excel表格
+     *
+     * @param sheetName  文件名
+     * @param objectList 数据表格
+     * @param titles     标题
+     * @return HSSFWorkbook
+     * @throws InvalidParametersException 参数错误异常
+     */
+    public static HSSFWorkbook exportExcel(String sheetName, List objectList, String[] titles) throws InvalidParametersException {
+        //校验参数
+        String verificationStr = verification(sheetName, objectList);
+        if (verificationStr != null) {
+            throw new InvalidParametersException(verificationStr);
+        }
+        HSSFWorkbook wb = new HSSFWorkbook();
+        HSSFSheet sheet = wb.createSheet(sheetName);
+        //固定标题栏
+        sheet.createFreezePane(0, 1, 0, 1);
+        HSSFRow row = sheet.createRow(0);
+        HSSFCellStyle style = wb.createCellStyle();
+        HSSFFont font = wb.createFont();
+        font.setBold(true);
+        font.setFontHeightInPoints((short) 14);
+        style.setFont(font);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        HSSFCell cell;
+
+        //标题
+        for (int j = 0; j < titles.length; j++) {
+            cell = row.createCell(j);
+            cell.setCellValue(titles[j]);
+            cell.setCellStyle(style);
+        }
+        for (int i = 1; i < objectList.size(); i++) {
+            row = sheet.createRow(i);
+            //获取对象
+            Object[] cellObject = (Object[]) objectList.get(i);
+            for (int d = 0; d < cellObject.length; d++) {
+                row.createCell(d).setCellValue(cellObject[d].toString());
+            }
+        }
+        // 设定自动宽度，等表格完善后再设定
+        for (int i = 0; i < titles.length; i++) {
+            sheet.autoSizeColumn(i);
+        }
+        return wb;
+    }
+
     /**
      * 解析注解
      *
@@ -176,7 +237,8 @@ public class ExcelUtils {
     private static Map<String, Map<String, String>> stringMapMap(Class<?> clazz) throws InvalidParametersException {
         Field[] fields = clazz.getDeclaredFields();
         Map<String, Map<String, String>> maps = new HashMap<>(fields.length);
-
+        //每次循环 + 2
+        int region = 2;
         if (fields.length > 0) {
             for (Field field : fields) {
                 if (field.isAnnotationPresent(ExcelField.class)) {
@@ -187,7 +249,7 @@ public class ExcelUtils {
                     if (param.length % 2 != 0) {
                         throw new InvalidParametersException("注解参数格式错误！请检查！");
                     }
-                    for (int i = 0; i < param.length; i += 2) {
+                    for (int i = 0; i < param.length; i += region) {
                         map.put(param[i], param[i + 1]);
                     }
                     maps.put(field.getName(), map);
@@ -199,12 +261,13 @@ public class ExcelUtils {
 
     /**
      * 解析 @FiledValue 注解
-     * @param object  类对象
-     * @return Map<String,String>
+     *
+     * @param object 类对象
+     * @return Map<String, String>
      */
-    private static Map<String,String[]> analysis(Object object) {
-        Field[] fields =  object.getClass().getDeclaredFields();
-        Map<String,String[]> resMap = new HashMap<>(fields.length);
+    private static Map<String, String[]> analysis(Object object) {
+        Field[] fields = object.getClass().getDeclaredFields();
+        Map<String, String[]> resMap = new HashMap<>(fields.length);
         if (fields.length > 0) {
             for (Field field : fields) {
                 if (field.isAnnotationPresent(FiledValue.class)) {
@@ -212,7 +275,7 @@ public class ExcelUtils {
                     //参数数组
                     String beginAppend = annotation.beginAppend();
                     String endAppend = annotation.endAppend();
-                    resMap.put(field.getName(), new String[]{beginAppend,endAppend});
+                    resMap.put(field.getName(), new String[]{beginAppend, endAppend});
                 }
             }
         }
@@ -334,6 +397,8 @@ public class ExcelUtils {
                     method.invoke(newInstance, Byte.parseByte(cellValue));
                 } else if (fieldType == short.class) {
                     method.invoke(newInstance, Short.parseShort(cellValue));
+                } else if (method.getReturnType() == Timestamp.class) {
+                    method.invoke(newInstance, Timestamp.valueOf(cellValue));
                 } else {
                     method.invoke(newInstance, cellValue);
                 }
@@ -439,7 +504,7 @@ public class ExcelUtils {
         return null;
     }
 
-    private static String verification(String sheetName, List<List<String>> lists) {
+    private static String verification(String sheetName, List<?> lists) {
         if (DataUtils.isEmpty(sheetName)) {
             return "导出失败！原因：sheetName 不能为空！";
         }
