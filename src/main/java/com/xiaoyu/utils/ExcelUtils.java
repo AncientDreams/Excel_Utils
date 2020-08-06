@@ -30,6 +30,12 @@ public class ExcelUtils {
 
 
     /**
+     * 表格每个字符所占的宽度
+     */
+    private static final int CELL_WIDTH = 550;
+
+
+    /**
      * 导出Excel
      *
      * @param sheetName 名称
@@ -49,32 +55,24 @@ public class ExcelUtils {
         if (verificationStr != null) {
             throw new InvalidParametersException(verificationStr);
         }
-        HSSFWorkbook wb = new HSSFWorkbook();
-        HSSFSheet sheet = wb.createSheet(sheetName);
-        //固定标题栏
-        sheet.createFreezePane(0, 1, 0, 1);
-        HSSFRow row = sheet.createRow(0);
-        HSSFCellStyle style = wb.createCellStyle();
-        HSSFFont font = wb.createFont();
-        font.setBold(true);
-        font.setFontHeightInPoints((short) 14);
-        style.setFont(font);
-        style.setAlignment(HorizontalAlignment.CENTER);
+        HSSFWorkbook wb = createHSSFWorkbook(sheetName);
         HSSFCell cell;
-//        log.info(LOG_STR + "正在导出Excel表格，sheetName：{}，标题长度：{}，表格数据条数：{}", sheetName, title.size(), list.size());
+        HSSFSheet sheet = wb.getSheet(sheetName);
+        HSSFRow row = sheet.createRow(0);
+
+        //设置表头
         int c = 0;
         for (String string : title.keySet()) {
             cell = row.createCell(c);
             cell.setCellValue(title.get(string));
-            cell.setCellStyle(style);
+            cell.setCellStyle(getCellStyle(wb));
             c++;
         }
-        //获取集合中的第一个属性Class对象，其他属性Class属性都一致
+        //Class对象
         Class<?> beanClass = list.get(0).getClass();
         //实体对象
         Object object;
         Method method;
-        //值
         String field;
         Map<String, Map<String, String>> maps = stringMapMap(beanClass);
         Map<String, String[]> mapByFiledValue = analysis(list.get(0));
@@ -123,9 +121,11 @@ public class ExcelUtils {
                 c++;
             }
         }
-        // 设定自动宽度
-        for (int i = 0; i < title.size(); i++) {
-            sheet.autoSizeColumn(i);
+        //设定自动宽度
+        int i = 0;
+        for (String string : title.keySet()) {
+            sheet.setColumnWidth(i, string.length() * CELL_WIDTH);
+            i++;
         }
         return wb;
     }
@@ -145,22 +145,15 @@ public class ExcelUtils {
         if (verificationStr != null) {
             throw new InvalidParametersException(verificationStr);
         }
-        HSSFWorkbook wb = new HSSFWorkbook();
-        HSSFSheet sheet = wb.createSheet(sheetName);
-        //固定标题栏
-        sheet.createFreezePane(0, 1, 0, 1);
+        HSSFWorkbook wb = createHSSFWorkbook(sheetName);
+        HSSFSheet sheet = wb.getSheet(sheetName);
         HSSFRow row = sheet.createRow(0);
-        HSSFCellStyle style = wb.createCellStyle();
-        HSSFFont font = wb.createFont();
-        font.setBold(true);
-        font.setFontHeightInPoints((short) 14);
-        style.setFont(font);
-        style.setAlignment(HorizontalAlignment.CENTER);
+
         HSSFCell cell;
         for (int j = 0; j < lists.get(0).size(); j++) {
             cell = row.createCell(j);
             cell.setCellValue(lists.get(0).get(j));
-            cell.setCellStyle(style);
+            cell.setCellStyle(getCellStyle(wb));
         }
         for (int i = 1; i < lists.size(); i++) {
             row = sheet.createRow(i);
@@ -172,6 +165,7 @@ public class ExcelUtils {
         }
         // 设定自动宽度
         for (int i = 0; i < lists.get(0).size(); i++) {
+            sheet.setColumnWidth(i, lists.get(0).get(i).length() * CELL_WIDTH);
             sheet.autoSizeColumn(i);
         }
         return wb;
@@ -193,24 +187,16 @@ public class ExcelUtils {
         if (verificationStr != null) {
             throw new InvalidParametersException(verificationStr);
         }
-        HSSFWorkbook wb = new HSSFWorkbook();
+        HSSFWorkbook wb = createHSSFWorkbook(sheetName);
         HSSFSheet sheet = wb.createSheet(sheetName);
-        //固定标题栏
-        sheet.createFreezePane(0, 1, 0, 1);
         HSSFRow row = sheet.createRow(0);
-        HSSFCellStyle style = wb.createCellStyle();
-        HSSFFont font = wb.createFont();
-        font.setBold(true);
-        font.setFontHeightInPoints((short) 14);
-        style.setFont(font);
-        style.setAlignment(HorizontalAlignment.CENTER);
         HSSFCell cell;
 
         //标题
         for (int j = 0; j < titles.length; j++) {
             cell = row.createCell(j);
             cell.setCellValue(titles[j]);
-            cell.setCellStyle(style);
+            cell.setCellStyle(getCellStyle(wb));
         }
         for (int i = 1; i < objectList.size(); i++) {
             row = sheet.createRow(i);
@@ -222,7 +208,7 @@ public class ExcelUtils {
         }
         // 设定自动宽度，等表格完善后再设定
         for (int i = 0; i < titles.length; i++) {
-            sheet.autoSizeColumn(i);
+            sheet.setColumnWidth(i, titles[i].length() * CELL_WIDTH);
         }
         return wb;
     }
@@ -333,6 +319,20 @@ public class ExcelUtils {
         return readExcel(file, 2);
     }
 
+    /**
+     * 读取Excel文件，数据封装到List ojc[]，此方法可以选择 sheet
+     *
+     * @param file        读取文件
+     * @param startRows   开始读取行数
+     * @param sheetNumber sheet 工作表索引
+     * @return List<Object [ ]>
+     * @throws IOException                io
+     * @throws InvalidParametersException 参数校验失败
+     */
+    public static List<Object[]> importExcel(File file, int startRows, int sheetNumber) throws IOException, InvalidParametersException {
+        return readExcel(file, startRows, sheetNumber);
+    }
+
     private static List<Object> readExcel(Object o, File file, boolean uuid, int startRows) throws Exception {
         //校验参数
         String verificationStr = verification(o, file, startRows);
@@ -370,7 +370,12 @@ public class ExcelUtils {
                 //属性类型
                 Class<?> fieldType = fields[i].getType();
                 //格数据
-                String cellValue = String.valueOf(cell.getRichStringCellValue());
+                String cellValue;
+                try {
+                    cellValue = String.valueOf(cell.getRichStringCellValue());
+                } catch (Exception e) {
+                    cellValue = String.valueOf(cell.getNumericCellValue());
+                }
 
                 if (maps.get(fieldName) != null) {
                     //字段有注解 ，判断是否符合注解中的条件
@@ -425,12 +430,48 @@ public class ExcelUtils {
             for (int i = 0; i < row.getLastCellNum(); i++) {
                 HSSFCell cell = row.getCell(i);
                 //格数据
-                String cellValue = String.valueOf(cell.getRichStringCellValue());
+                String cellValue;
+                try {
+                    cellValue = String.valueOf(cell.getRichStringCellValue());
+                } catch (Exception e) {
+                    cellValue = String.valueOf(cell.getNumericCellValue());
+                }
                 list.add(cellValue);
             }
             lists.add(list);
         }
         return lists;
+    }
+
+    private static List<Object[]> readExcel(File file, int startRows, int sheetNumber) throws IOException, InvalidParametersException {
+        //校验参数
+        String verificationStr = verification(file, startRows);
+        if (verificationStr != null) {
+            throw new InvalidParametersException(verificationStr);
+        }
+        if (sheetNumber < 0) {
+            sheetNumber = 1;
+        }
+        HSSFWorkbook wb = new HSSFWorkbook(new FileInputStream(file));
+        HSSFSheet sheet = wb.getSheetAt(sheetNumber);
+        List<Object[]> objects = new ArrayList<>(sheet.getLastRowNum());
+        for (int j = (startRows - 1); j < sheet.getLastRowNum() + 1; j++) {
+            HSSFRow row = sheet.getRow(j);
+            Object[] object = new Object[row.getLastCellNum()];
+            for (int i = 0; i < row.getLastCellNum(); i++) {
+                HSSFCell cell = row.getCell(i);
+                //格数据
+                String cellValue;
+                try {
+                    cellValue = String.valueOf(cell.getRichStringCellValue());
+                } catch (Exception e) {
+                    cellValue = String.valueOf(cell.getNumericCellValue());
+                }
+                object[i] = cellValue;
+            }
+            objects.add(object);
+        }
+        return objects;
     }
 
     /**
@@ -512,6 +553,24 @@ public class ExcelUtils {
             return "导出失败！原因：List 表格数据不能为空！";
         }
         return null;
+    }
+
+    private static HSSFWorkbook createHSSFWorkbook(String sheetName) {
+        HSSFWorkbook wb = new HSSFWorkbook();
+        HSSFSheet sheet = wb.createSheet(sheetName);
+        //固定标题栏
+        sheet.createFreezePane(0, 1, 0, 1);
+        return wb;
+    }
+
+    private static HSSFCellStyle getCellStyle(HSSFWorkbook workbook) {
+        HSSFCellStyle style = workbook.createCellStyle();
+        HSSFFont font = workbook.createFont();
+        font.setBold(true);
+        font.setFontHeightInPoints((short) 14);
+        style.setFont(font);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        return style;
     }
 
 }
